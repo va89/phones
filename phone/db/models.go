@@ -1,9 +1,32 @@
 package db
 
 import (
+	"fmt"
+
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
+
+var TestDbPassword string = GetEnv("TEST_DB_PASSWORD", "1")
+
+const (
+	host   = "localhost"
+	port   = 5432
+	user   = "admin"
+	dbname = "phones"
+)
+
+var DBConn = struct {
+	Host   string
+	Port   int
+	User   string
+	DBName string
+}{
+	host,
+	port,
+	user,
+	dbname,
+}
 
 type Phones struct {
 	gorm.Model
@@ -34,6 +57,29 @@ func ConvertToReadWriteNumber(p []Phones) []ReadWriteNumber {
 	return interfaceSlice
 }
 
+func UpdatePhonesField(connection *gorm.DB, field string, phone *Phones, value string) {
+
+	connection.Debug().Model(phone).Select(field).Update(field, value)
+	// fmt.Printf("%v#\n", res.Statement)
+}
+
+func BatchUpdatePhonesField(connection *gorm.DB, phones *[]Phones) {
+	values := ""
+	for i, phone := range *phones {
+		values += fmt.Sprintf("(%d, '%s')", phone.ID, phone.PhoneNumber)
+		if i < len(*phones)-1 {
+			values += ","
+		}
+	}
+	fmt.Println(values)
+	connection.Exec(fmt.Sprintf(`update phones as phones set
+					phone_number = phones2.phone_number
+				    from (values
+					%s
+				    ) as phones2(id, phone_number)
+				    where phones2.id = phones.id;`, values))
+}
+
 func Migrate() {
 	// Migrate the schema
 	// db.AutoMigrate(&Phones{})
@@ -60,8 +106,12 @@ func Migrate() {
 	//	db.Delete(&product, 1)
 }
 
+func DSN() string {
+	return fmt.Sprintf("host=%s port=%d user=%s dbname=%s password=%s", DBConn.Host, DBConn.Port, DBConn.User, DBConn.DBName, TestDbPassword)
+}
+
 func GetDatabaseConnection() *gorm.DB {
-	db, err := gorm.Open(postgres.Open("host=localhost port=5432 user=admin dbname=phones password=1"), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(DSN()), &gorm.Config{})
 	if err != nil {
 		panic("failed to connect database")
 	}
